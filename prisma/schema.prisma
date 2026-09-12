@@ -1,0 +1,179 @@
+// Prisma schema for Signal Job
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  email        String     @unique
+  passwordHash String
+  role         String     @default("ADMIN") // SUPERADMIN, ADMIN, EDITOR
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  logs         AdminLog[]
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  telegramId          String               @unique
+  telegramUsername    String?
+  firstName           String?
+  lastName            String?
+  isActive            Boolean              @default(true)
+  notificationsPaused Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  preference          UserPreference?
+  notifications       Notification[]
+  savedJobs           SavedJob[]
+  ignoredJobs         IgnoredJob[]
+  interactions        UserJobInteraction[]
+
+  @@index([isActive, notificationsPaused])
+}
+
+model UserPreference {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // JSON arrays stored as strings for broad SQL compatibility
+  categories       String   @default("[]") // e.g. ["technology", "finance"]
+  professions      String   @default("[]") // e.g. ["Software Developer", "Accountant"]
+  locations        String   @default("[]") // e.g. ["Addis Ababa", "Remote"]
+  employmentTypes  String   @default("[]") // e.g. ["full_time", "internship"]
+  experienceLevels String   @default("[]") // e.g. ["internship", "entry_level"]
+  keywords         String   @default("[]") // e.g. ["react", "python"]
+  skills           String   @default("[]") // e.g. ["JavaScript", "SQL"]
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Job {
+  id                      String               @id @default(cuid())
+  title                   String
+  company                 String?
+  location                String?
+  category                String?
+  profession              String?
+  employmentType          String?              // Full-time, Internship, Contract, Part-time, Remote
+  experienceLevel         String?              // Internship, Entry Level, Fresh Graduate, Mid Level, Senior Level
+  minExperienceYears      Int?
+  maxExperienceYears      Int?
+  education               String?
+  skills                  String               @default("[]") // JSON string array of skills
+  summary                 String?
+  description             String?
+  responsibilities        String?
+  requirements            String?
+  salary                  String?
+  applicationInstructions String?
+  applicationUrl          String?
+  
+  // Ingestion Source Details
+  rawText                 String
+  sourceName              String?              // e.g. Telegram channel name, website name
+  sourceUrl               String?              // Original post URL
+  
+  // Lifecycle & Status
+  status                  String               @default("DRAFT") // DRAFT, PUBLISHED, EXPIRED, REJECTED
+  deadline                DateTime?
+  publishedAt             DateTime?
+  expiredAt               DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  notifications           Notification[]
+  savedBy                 SavedJob[]
+  ignoredBy               IgnoredJob[]
+  interactions            UserJobInteraction[]
+
+  @@index([status])
+  @@index([status, publishedAt])
+  @@index([deadline])
+}
+
+model SavedJob {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, jobId])
+}
+
+model IgnoredJob {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  reason    String?  // e.g. NOT_INTERESTED, WRONG_LOCATION, SALARY_TOO_LOW
+  createdAt DateTime @default(now())
+
+  @@unique([userId, jobId])
+}
+
+model Notification {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId             String
+  job               Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  matchScore        Int?      // 0 to 100 percentage
+  matchReasons      String?   // JSON or text explaining match criteria
+  telegramMessageId String?
+  status            String    @default("PENDING") // PENDING, SENT, FAILED
+  retryCount        Int       @default(0)
+  sentAt            DateTime?
+  errorMessage      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([jobId])
+  @@index([status])
+  @@index([status, retryCount])
+  @@index([jobId, status])
+  @@unique([userId, jobId])
+}
+
+model UserJobInteraction {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobId     String?
+  job       Job?     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  action    String   // JOB_VIEWED, JOB_SAVED, JOB_UNSAVED, JOB_APPLIED, PROFILE_UPDATED, NOTIFICATIONS_PAUSED, NOTIFICATIONS_RESUMED, NOTIFICATION_SENT
+  metadata  String?  // JSON string with extra contextual data
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([jobId])
+}
+
+model AdminLog {
+  id        String     @id @default(cuid())
+  adminId   String?
+  admin     AdminUser? @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  action    String
+  details   String?
+  ipAddress String?
+  createdAt DateTime   @default(now())
+
+  @@index([adminId])
+  @@index([createdAt])
+}
