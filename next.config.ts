@@ -2,8 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Output mode: "standalone" bundles everything needed to run in one directory.
-  // This is the recommended mode for Railway, Docker, and other container deployments.
-  output: "standalone",
+  // This is the recommended mode for Docker deployments, but we are using Railway's default builder.
+  // output: "standalone",
 
   // Silence the "turbopack.root" warning about package-lock.json in parent dirs.
   turbopack: {
