@@ -118,33 +118,36 @@ export class JobBrowseService {
       return this.getRecentJobs(limit);
     }
 
-    const orConditions: object[] = [];
+    const andConditions: object[] = [activeDeadlineCondition];
 
     if (preferences.categories.length > 0) {
-      orConditions.push(...preferences.categories.map((c) => ({
-        category: { contains: c },
-      })));
+      andConditions.push({
+        OR: preferences.categories.map((c) => ({
+          category: { contains: c },
+        })),
+      });
     }
 
     if (preferences.experienceLevels.length > 0) {
-      orConditions.push(...preferences.experienceLevels.map((e) => ({
-        experienceLevel: { contains: e },
-      })));
+      andConditions.push({
+        OR: preferences.experienceLevels.map((e) => ({
+          experienceLevel: { contains: e },
+        })),
+      });
     }
 
     if (preferences.locations.length > 0) {
-      orConditions.push(...preferences.locations.map((l) => ({
-        location: { contains: l },
-      })));
+      andConditions.push({
+        OR: preferences.locations.map((l) => ({
+          location: { contains: l },
+        })),
+      });
     }
 
     const jobs = await db.job.findMany({
       where: {
         status: "PUBLISHED", // hits the @@index([status]) index
-        AND: [
-          activeDeadlineCondition,
-          { OR: orConditions },
-        ],
+        AND: andConditions,
       },
       select: {
         id: true,
@@ -160,10 +163,6 @@ export class JobBrowseService {
       orderBy: { publishedAt: "desc" }, // hits the @@index([status, publishedAt]) index
       take: limit,
     });
-
-    if (jobs.length === 0) {
-      return this.getRecentJobs(limit);
-    }
 
     return jobs;
   }

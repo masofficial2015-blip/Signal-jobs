@@ -65,7 +65,7 @@ For each position, extract:
 - company: Organization/employer name (shared across positions if same company) or null
 - summary: Short 2-3 sentence summary of the opportunity or null
 - description: Overview/about the role or null
-- category: Array of applicable categories from ["technology", "engineering", "business_admin", "finance_accounting", "hospitality", "agriculture", "logistics_transport", "ngo_development", "government", "marketing_sales", "healthcare", "education", "other"] (e.g. ["technology", "engineering"])
+- category: Array of applicable categories from ["agriculture", "architecture", "business_admin", "education", "engineering", "finance_accounting", "healthcare", "hospitality", "marketing_sales", "media_communications", "ngo_development", "software_it", "logistics_transport", "other"] (e.g. ["software_it", "engineering"])
 - profession: Standardized job role (e.g. "Software Engineer", "Civil Engineer", "Accountant") or null
 - experienceLevel: Array of matching experience levels from ["graduate", "entry_level", "mid_level", "senior_level"]. Note: If the position accepts 0 years / fresh grads or 0-2 years, include both "graduate" and "entry_level" in the array.
 - education: Degree/Diploma/Education requirement (e.g. "BSc in Computer Science or related", "BA in Accounting", "Diploma / Degree in Management") or null

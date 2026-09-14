@@ -40,7 +40,7 @@ const envSchema = z
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   })
   .superRefine((data, ctx) => {
-    if (data.NODE_ENV === "production") {
+    if (data.NODE_ENV === "production" && (process.env.RAILWAY_ENVIRONMENT || process.env.VERCEL || process.env.RENDER || process.env.FLY_APP_NAME)) {
       if (!data.ADMIN_SESSION_SECRET || data.ADMIN_SESSION_SECRET.trim().length === 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

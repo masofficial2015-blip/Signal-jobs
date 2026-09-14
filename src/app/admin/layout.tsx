@@ -12,7 +12,8 @@ import {
   Radio, 
   ChevronRight,
   ShieldCheck,
-  Send
+  Send,
+  PieChart
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +38,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const navItems = [
     { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
+    { label: "Analytics", href: "/admin/analytics", icon: PieChart },
     { label: "Ingest New Job", href: "/admin/jobs/new", icon: PlusCircle, highlight: true },
     { label: "Jobs Manager", href: "/admin/jobs", icon: Briefcase },
     { label: "Telegram Users", href: "/admin/users", icon: Users },
