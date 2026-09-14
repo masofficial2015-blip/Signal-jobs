@@ -1,8 +1,10 @@
 import { db } from "@/lib/db";
-import { Users, Send, MapPin, CheckCircle, PauseCircle, Briefcase, Bookmark, Activity } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Prisma } from "@prisma/client";
+import { Users, Send, MapPin, CheckCircle, PauseCircle, Briefcase, Bookmark } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
+import { UserFilters } from "./user-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +18,66 @@ function parseJsonArray(jsonStr?: string | null): string[] {
   }
 }
 
-export default async function AdminUsersPage() {
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
+  const params = await searchParams; // Next.js 15+ searchParams is a Promise
+  const q = (params.q as string) || "";
+  const status = (params.status as string) || "all";
+  const onboarding = (params.onboarding as string) || "all";
+  const category = (params.category as string) || "all";
+  const location = (params.location as string) || "all";
+  const experience = (params.experience as string) || "all";
+
+  // Build the Prisma Where clause dynamically
+  const where: Prisma.UserWhereInput = {};
+
+  if (q) {
+    where.OR = [
+      { firstName: { contains: q, mode: "insensitive" } },
+      { lastName: { contains: q, mode: "insensitive" } },
+      { telegramUsername: { contains: q, mode: "insensitive" } },
+      { telegramId: { contains: q } },
+    ];
+  }
+
+  if (status === "active") {
+    where.isActive = true;
+    where.notificationsPaused = false;
+  } else if (status === "paused") {
+    where.isActive = true;
+    where.notificationsPaused = true;
+  } else if (status === "inactive") {
+    where.isActive = false;
+  }
+
+  // To filter by preference JSON fields, we unfortunately need to do it in-memory or 
+  // via complex queries. Since it's SQLite-compatible stringified arrays, 
+  // we can use string matching for simple contains as a workaround for this MVP.
+  const prefWhere: any = {};
+  let hasPrefWhere = false;
+
+  if (category !== "all") {
+    prefWhere.categories = { contains: `"${category}"` };
+    hasPrefWhere = true;
+  }
+  if (location !== "all") {
+    prefWhere.locations = { contains: `"${location}"` };
+    hasPrefWhere = true;
+  }
+  if (experience !== "all") {
+    prefWhere.experienceLevels = { contains: `"${experience}"` };
+    hasPrefWhere = true;
+  }
+
+  if (hasPrefWhere) {
+    where.preference = prefWhere;
+  }
+
   const users = await db.user.findMany({
+    where,
     include: {
       preference: true,
       _count: {
@@ -27,29 +87,47 @@ export default async function AdminUsersPage() {
     orderBy: { createdAt: "desc" },
   });
 
+  // In-memory filter for onboarding status since it depends on parsing JSON arrays
+  const filteredUsers = users.filter((u) => {
+    if (onboarding === "all") return true;
+    
+    const categories = parseJsonArray(u.preference?.categories);
+    const locations = parseJsonArray(u.preference?.locations);
+    const expLevels = parseJsonArray(u.preference?.experienceLevels);
+    
+    const isOnboarded = categories.length > 0 || expLevels.length > 0 || locations.length > 0;
+    
+    if (onboarding === "completed") return isOnboarded;
+    if (onboarding === "pending") return !isOnboarded;
+    
+    return true;
+  });
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between border-b border-slate-800 pb-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Telegram Subscribers & Preferences
+            User Management
           </h1>
           <p className="text-sm text-slate-400">
-            View registered job seekers, onboarding completion, configured match preferences, and activity metrics.
+            View, search, and filter registered job seekers.
           </p>
         </div>
         <Badge variant="default" className="text-xs">
-          {users.length} Total Registered Users
+          {filteredUsers.length} Users Found
         </Badge>
       </div>
 
+      <UserFilters />
+
       <Card className="border-slate-800 bg-slate-900/70 overflow-hidden">
-        {users.length === 0 ? (
+        {filteredUsers.length === 0 ? (
           <div className="p-12 text-center space-y-3">
             <Users className="h-10 w-10 text-slate-600 mx-auto" />
-            <p className="text-slate-400 text-sm font-medium">No Telegram subscribers yet.</p>
+            <p className="text-slate-400 text-sm font-medium">No users match your filters.</p>
             <p className="text-xs text-slate-600 max-w-sm mx-auto">
-              Job seekers who press /start on the Telegram bot will automatically appear here along with their preferences.
+              Try adjusting your search query or clearing some filters to see more results.
             </p>
           </div>
         ) : (
@@ -66,12 +144,12 @@ export default async function AdminUsersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {users.map((u) => {
-                  const categories = parseJsonArray(u.preference?.categories);
-                  const professions = parseJsonArray(u.preference?.professions);
-                  const locations = parseJsonArray(u.preference?.locations);
-                  const expLevels = parseJsonArray(u.preference?.experienceLevels);
-                  const isOnboarded = categories.length > 0 || expLevels.length > 0 || locations.length > 0;
+                {filteredUsers.map((u) => {
+                  const userCategories = parseJsonArray(u.preference?.categories);
+                  const userProfessions = parseJsonArray(u.preference?.professions);
+                  const userLocations = parseJsonArray(u.preference?.locations);
+                  const userExpLevels = parseJsonArray(u.preference?.experienceLevels);
+                  const isOnboarded = userCategories.length > 0 || userExpLevels.length > 0 || userLocations.length > 0;
 
                   return (
                     <tr key={u.id} className="hover:bg-slate-800/40 transition-colors">
@@ -109,8 +187,8 @@ export default async function AdminUsersPage() {
                       </td>
                       <td className="py-3.5 px-4 space-y-1">
                         <div className="flex flex-wrap gap-1 max-w-xs">
-                          {categories.length > 0 ? (
-                            categories.map((c) => (
+                          {userCategories.length > 0 ? (
+                            userCategories.map((c) => (
                               <Badge key={c} variant="secondary" className="text-[10px]">
                                 {c}
                               </Badge>
@@ -119,20 +197,20 @@ export default async function AdminUsersPage() {
                             <span className="text-slate-600 text-[11px]">All Categories</span>
                           )}
                         </div>
-                        {professions.length > 0 && (
+                        {userProfessions.length > 0 && (
                           <div className="text-[10px] text-slate-300 truncate max-w-xs">
-                            Prof: {professions.join(", ")}
+                            Prof: {userProfessions.join(", ")}
                           </div>
                         )}
                       </td>
                       <td className="py-3.5 px-4 space-y-1">
                         <div className="flex items-center gap-1 text-slate-300">
                           <MapPin className="h-3 w-3 text-sky-400" />
-                          <span>{locations.join(", ") || "Any Location"}</span>
+                          <span>{userLocations.join(", ") || "Any Location"}</span>
                         </div>
                         <div className="flex items-center gap-1 text-slate-400 text-[11px]">
                           <Briefcase className="h-3 w-3 text-slate-500" />
-                          <span>{expLevels.join(", ") || "Any Experience"}</span>
+                          <span>{userExpLevels.join(", ") || "Any Experience"}</span>
                         </div>
                       </td>
                       <td className="py-3.5 px-4 space-y-1">

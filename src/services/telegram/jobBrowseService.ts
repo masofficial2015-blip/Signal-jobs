@@ -121,8 +121,15 @@ export class JobBrowseService {
     const andConditions: object[] = [activeDeadlineCondition];
 
     if (preferences.categories.length > 0) {
+      const catQueries: string[] = [];
+      preferences.categories.forEach((c) => {
+        catQueries.push(c);
+        if (c === "software_it" || c === "technology") {
+          catQueries.push("software_it", "technology", "software", "tech");
+        }
+      });
       andConditions.push({
-        OR: preferences.categories.map((c) => ({
+        OR: Array.from(new Set(catQueries)).map((c) => ({
           category: { contains: c },
         })),
       });
@@ -136,9 +143,13 @@ export class JobBrowseService {
       });
     }
 
-    if (preferences.locations.length > 0) {
+    const specificLocations = preferences.locations.filter(
+      (l) => l !== "any" && l !== "anywhere" && l.toLowerCase() !== "anywhere in ethiopia"
+    );
+
+    if (specificLocations.length > 0) {
       andConditions.push({
-        OR: preferences.locations.map((l) => ({
+        OR: specificLocations.map((l) => ({
           location: { contains: l },
         })),
       });

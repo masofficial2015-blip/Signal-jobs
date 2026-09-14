@@ -56,7 +56,7 @@ export class TelegramApiClient {
     this.isMock = !this.botToken || this.botToken === "mock_telegram_bot_token";
   }
 
-  private async call<T = unknown>(method: string, body: Record<string, unknown>): Promise<T | null> {
+  private async call<T = unknown>(method: string, body: Record<string, unknown>): Promise<T> {
     if (this.isMock) {
       console.log(`[Telegram Mock] ${method}:`, JSON.stringify(body).slice(0, 200));
       if (method === "sendMessage") {
@@ -74,16 +74,16 @@ export class TelegramApiClient {
       const data = await res.json();
       if (!data.ok) {
         console.error(`[Telegram API Error] ${method}:`, data.description);
-        return null;
+        throw new Error(data.description || "Telegram API Error");
       }
       return data.result as T;
-    } catch (err) {
+    } catch (err: any) {
       console.error(`[Telegram API Fetch Error] ${method}:`, err);
-      return null;
+      throw err;
     }
   }
 
-  async sendMessage(options: SendMessageOptions): Promise<{ message_id?: number } | null> {
+  async sendMessage(options: SendMessageOptions): Promise<{ message_id?: number }> {
     return this.call("sendMessage", {
       chat_id: options.chatId,
       text: options.text,

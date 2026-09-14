@@ -453,31 +453,28 @@ export class NotificationDispatcher {
 
   // ── Private helpers ─────────────────────────────────────────────────────────
 
-  /**
-   * Wraps telegramClient.sendMessage with Telegram 429 retry_after support.
-   * On rate-limit response, waits the specified retry_after seconds then retries once.
-   */
   private async sendWithRetry(options: Parameters<typeof telegramClient.sendMessage>[0]): Promise<{
     ok: boolean;
     data: { message_id?: number } | null;
     errorMessage?: string;
   }> {
-    const result = await telegramClient.sendMessage(options);
-
-    // telegramClient.sendMessage returns null on any API error
-    // Check for 429 by inspecting the internal error (client logs it but returns null)
-    // We re-attempt once after a short delay for robustness
-    if (result === null) {
+    try {
+      const result = await telegramClient.sendMessage(options);
+      return { ok: true, data: result };
+    } catch (err: any) {
       // Wait 2 seconds and retry once — covers transient failures and mild rate limits
       await this.delay(2000);
-      const retry = await telegramClient.sendMessage(options);
-      if (retry === null) {
-        return { ok: false, data: null, errorMessage: "Failed to send message via Telegram API" };
+      try {
+        const retry = await telegramClient.sendMessage(options);
+        return { ok: true, data: retry };
+      } catch (retryErr: any) {
+        return { 
+          ok: false, 
+          data: null, 
+          errorMessage: retryErr.message || err.message || "Failed to send message via Telegram API" 
+        };
       }
-      return { ok: true, data: retry };
     }
-
-    return { ok: true, data: result };
   }
 
   private delay(ms: number): Promise<void> {

@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS } from "@/lib/constants";
+import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS, normalizeCategoryId } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +24,8 @@ export default async function AnalyticsPage() {
   const newUsersThisWeek = await db.user.count({ where: { createdAt: { gte: startOfWeek } } });
   const activeUsers = await db.user.count({ where: { isActive: true } });
   const blockedUsers = await db.user.count({ where: { isActive: false } });
-  const onboardedUsers = await db.userPreference.count(); // if they have preferences, they completed onboarding
 
-  // --- 2. PREFERENCES DISTRIBUTION ---
+  // --- 2. PREFERENCES DISTRIBUTION & ONBOARDING COMPLETION ---
   const allPreferences = await db.userPreference.findMany({
     select: { categories: true, experienceLevels: true, locations: true }
   });
@@ -34,16 +33,49 @@ export default async function AnalyticsPage() {
   const categoryCounts: Record<string, number> = {};
   const experienceCounts: Record<string, number> = {};
   const locationCounts: Record<string, number> = {};
+  let completedOnboardingCount = 0;
 
   allPreferences.forEach(pref => {
     try {
-      const cats = JSON.parse(pref.categories);
-      const exps = JSON.parse(pref.experienceLevels);
-      const locs = JSON.parse(pref.locations);
+      const cats: string[] = JSON.parse(pref.categories || "[]");
+      const exps: string[] = JSON.parse(pref.experienceLevels || "[]");
+      const locs: string[] = JSON.parse(pref.locations || "[]");
 
-      cats.forEach((c: string) => { categoryCounts[c] = (categoryCounts[c] || 0) + 1; });
-      exps.forEach((e: string) => { experienceCounts[e] = (experienceCounts[e] || 0) + 1; });
-      locs.forEach((l: string) => { locationCounts[l] = (locationCounts[l] || 0) + 1; });
+      const hasCats = cats.length > 0;
+      const hasExps = exps.length > 0;
+      const isCompletedOnboarding = hasCats && hasExps;
+
+      if (isCompletedOnboarding) {
+        completedOnboardingCount++;
+      }
+
+      // Count categories with legacy alias normalization (e.g. "technology" -> "software_it")
+      cats.forEach((rawCat: string) => {
+        const normalized = normalizeCategoryId(rawCat);
+        categoryCounts[normalized] = (categoryCounts[normalized] || 0) + 1;
+      });
+
+      // Count experience levels
+      exps.forEach((e: string) => {
+        experienceCounts[e] = (experienceCounts[e] || 0) + 1;
+      });
+      
+      // Count locations:
+      // If user completed onboarding and chose "Anywhere in Ethiopia" (stored as "any", "anywhere", or empty array)
+      const isAnyLocation = locs.length === 0 || locs.some(l => {
+        const clean = String(l).toLowerCase().trim();
+        return clean === "any" || clean === "anywhere" || clean === "anywhere in ethiopia";
+      });
+
+      if (isAnyLocation) {
+        if (isCompletedOnboarding) {
+          locationCounts["Anywhere in Ethiopia"] = (locationCounts["Anywhere in Ethiopia"] || 0) + 1;
+        }
+      } else {
+        locs.forEach((l: string) => {
+          locationCounts[l] = (locationCounts[l] || 0) + 1;
+        });
+      }
     } catch (e) {
       // Ignore parse errors for old malformed data
     }
@@ -67,7 +99,7 @@ export default async function AnalyticsPage() {
   const topLocations = Object.entries(locationCounts)
     .sort((a, b) => b[1] - a[1])
     .map(([id, count]) => ({
-      label: ETHIOPIAN_LOCATIONS.find(l => l.id === id)?.label || id,
+      label: id === "Anywhere in Ethiopia" ? "Anywhere in Ethiopia" : (ETHIOPIAN_LOCATIONS.find(l => l.id === id)?.label || id),
       count
     }));
 
@@ -102,14 +134,14 @@ export default async function AnalyticsPage() {
         <MetricCard title="New Today" value={newUsersToday.toLocaleString()} />
         <MetricCard title="New This Week" value={newUsersThisWeek.toLocaleString()} />
         <MetricCard title="Active Users" value={activeUsers.toLocaleString()} />
-        <MetricCard title="Onboarded Users" value={onboardedUsers.toLocaleString()} />
+        <MetricCard title="Onboarded Users" value={completedOnboardingCount.toLocaleString()} />
         <MetricCard title="Stopped/Blocked Bot" value={blockedUsers.toLocaleString()} />
       </div>
 
       {/* Bot Interactions Section */}
       <h2 className="text-xl font-semibold mt-12 mb-4">🤖 Bot Interactions</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title="Onboarding Completed" value={onboardedUsers.toLocaleString()} />
+        <MetricCard title="Onboarding Completed" value={completedOnboardingCount.toLocaleString()} />
         <MetricCard title="Job Details Clicked" value={jobDetailsClicked.toLocaleString()} />
         <MetricCard title="Jobs Saved" value={jobsSaved.toLocaleString()} />
         <MetricCard title="Notifications Sent" value={notificationsSent.toLocaleString()} />

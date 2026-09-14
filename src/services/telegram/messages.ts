@@ -3,7 +3,7 @@
  * Pure functions, no I/O. Easy to test independently.
  */
 
-import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS } from "@/lib/constants";
+import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS, normalizeCategoryId } from "@/lib/constants";
 
 export type InlineKeyboard = Array<Array<{ text: string; callback_data?: string; url?: string }>>;
 
@@ -44,7 +44,8 @@ export function formatCategoryLabels(raw: string | string[] | null | undefined):
   const labels = items
     .map((item) => {
       const clean = item.replace(/^["']|["']$/g, "").trim();
-      return categoryMap.get(clean) || clean;
+      const normalized = normalizeCategoryId(clean);
+      return categoryMap.get(normalized) || categoryMap.get(clean) || clean;
     })
     .filter(Boolean);
 
@@ -87,6 +88,8 @@ export function formatExperienceLabel(raw: string | string[] | null | undefined)
 
 export function formatLocationLabel(raw: string | null | undefined): string {
   if (!raw) return "";
+  const clean = raw.trim().toLowerCase();
+  if (clean === "any" || clean === "anywhere") return "Anywhere in Ethiopia";
   const locMap = new Map<string, string>(ETHIOPIAN_LOCATIONS.map((l) => [l.id, l.label]));
   return locMap.get(raw.trim()) || raw;
 }

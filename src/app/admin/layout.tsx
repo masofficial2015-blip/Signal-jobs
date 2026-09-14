@@ -13,7 +13,8 @@ import {
   ChevronRight,
   ShieldCheck,
   Send,
-  PieChart
+  PieChart,
+  Megaphone
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +43,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { label: "Ingest New Job", href: "/admin/jobs/new", icon: PlusCircle, highlight: true },
     { label: "Jobs Manager", href: "/admin/jobs", icon: Briefcase },
     { label: "Telegram Users", href: "/admin/users", icon: Users },
+    { label: "Broadcast", href: "/admin/broadcast", icon: Megaphone },
     { label: "Notifications", href: "/admin/notifications", icon: Send },
     { label: "Settings", href: "/admin/settings", icon: Settings },
   ];
