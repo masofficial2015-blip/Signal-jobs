@@ -45,6 +45,22 @@ export interface EditMessageReplyMarkupOptions {
   replyMarkup?: { inline_keyboard?: InlineKeyboardButton[][] };
 }
 
+/**
+ * Structured error thrown by the Telegram API client.
+ * Includes `retryAfter` (seconds) when Telegram returns HTTP 429.
+ */
+export class TelegramApiError extends Error {
+  public readonly errorCode?: number;
+  public readonly retryAfter?: number;
+
+  constructor(description: string, errorCode?: number, retryAfter?: number) {
+    super(description);
+    this.name = "TelegramApiError";
+    this.errorCode = errorCode;
+    this.retryAfter = retryAfter;
+  }
+}
+
 export class TelegramApiClient {
   private readonly botToken: string;
   private readonly apiBase: string;
@@ -73,11 +89,18 @@ export class TelegramApiClient {
       });
       const data = await res.json();
       if (!data.ok) {
-        console.error(`[Telegram API Error] ${method}:`, data.description);
-        throw new Error(data.description || "Telegram API Error");
+        // Extract retry_after from Telegram's response parameters (set on 429)
+        const retryAfter: number | undefined = data.parameters?.retry_after;
+        console.error(`[Telegram API Error] ${method}:`, data.description, retryAfter ? `(retry_after: ${retryAfter}s)` : "");
+        throw new TelegramApiError(
+          data.description || "Telegram API Error",
+          data.error_code,
+          retryAfter
+        );
       }
       return data.result as T;
     } catch (err: any) {
+      if (err instanceof TelegramApiError) throw err;
       console.error(`[Telegram API Fetch Error] ${method}:`, err);
       throw err;
     }

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { ExtractedJobData } from "@/lib/types";
 import { notificationDispatcher } from "../notifications/notifier";
+import { invalidateBrowseCache } from "../telegram/jobBrowseService";
 
 export class JobService {
   /**
@@ -28,6 +29,10 @@ export class JobService {
 
   /**
    * Publishes a reviewed job and triggers notifications.
+   *
+   * Uses dispatchJobNotificationsAsync (fire-and-forget) so the caller
+   * is NOT blocked while 100+ Telegram messages are sent. The notification
+   * pipeline continues in the background after this method returns.
    */
   async publishJob(jobId: string) {
     const job = await db.job.update({
@@ -38,20 +43,24 @@ export class JobService {
       },
     });
 
-    // Asynchronously dispatch notifications
-    const dispatchResult = await notificationDispatcher.dispatchJobNotifications(jobId);
+    // Invalidate the bot browse cache so the new job is immediately visible
+    invalidateBrowseCache();
 
-    return { job, dispatchResult };
+    // Non-blocking: returns immediately, notifications send in background
+    notificationDispatcher.dispatchJobNotificationsAsync(jobId);
+
+    return { job };
   }
 
   /**
    * Simple duplicate detection based on normalized title and company.
+   * Uses case-insensitive matching to avoid missing duplicates with different casing.
    */
   async findPotentialDuplicates(title: string, company?: string | null) {
     if (!company) {
       return db.job.findMany({
         where: {
-          title: { contains: title.trim() },
+          title: { contains: title.trim(), mode: "insensitive" },
         },
         take: 3,
       });
@@ -59,8 +68,8 @@ export class JobService {
 
     return db.job.findMany({
       where: {
-        title: { contains: title.trim() },
-        company: { contains: company.trim() },
+        title: { contains: title.trim(), mode: "insensitive" },
+        company: { contains: company.trim(), mode: "insensitive" },
       },
       take: 3,
     });

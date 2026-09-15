@@ -18,17 +18,25 @@ export default async function AnalyticsPage() {
   const startOfWeek = new Date(startOfToday);
   startOfWeek.setDate(startOfToday.getDate() - startOfToday.getDay()); // Sunday as start of week
 
-  // --- 1. USER METRICS ---
-  const totalUsers = await db.user.count();
-  const newUsersToday = await db.user.count({ where: { createdAt: { gte: startOfToday } } });
-  const newUsersThisWeek = await db.user.count({ where: { createdAt: { gte: startOfWeek } } });
-  const activeUsers = await db.user.count({ where: { isActive: true } });
-  const blockedUsers = await db.user.count({ where: { isActive: false } });
-
-  // --- 2. PREFERENCES DISTRIBUTION & ONBOARDING COMPLETION ---
-  const allPreferences = await db.userPreference.findMany({
-    select: { categories: true, experienceLevels: true, locations: true }
-  });
+  // --- 1. USER METRICS (all in parallel) ---
+  const [
+    totalUsers,
+    newUsersToday,
+    newUsersThisWeek,
+    activeUsers,
+    blockedUsers,
+    allPreferences,
+  ] = await Promise.all([
+    db.user.count(),
+    db.user.count({ where: { createdAt: { gte: startOfToday } } }),
+    db.user.count({ where: { createdAt: { gte: startOfWeek } } }),
+    db.user.count({ where: { isActive: true } }),
+    db.user.count({ where: { isActive: false } }),
+    // --- 2. PREFERENCES DISTRIBUTION & ONBOARDING COMPLETION ---
+    db.userPreference.findMany({
+      select: { categories: true, experienceLevels: true, locations: true },
+    }),
+  ]);
 
   const categoryCounts: Record<string, number> = {};
   const experienceCounts: Record<string, number> = {};

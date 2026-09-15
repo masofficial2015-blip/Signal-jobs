@@ -55,14 +55,32 @@ export async function POST(req: NextRequest) {
       where.preference = prefWhere;
     }
 
-    const users = await db.user.findMany({
-      where,
-      include: {
-        preference: true,
-      },
-    });
+    // Cursor-paginated fetch — keeps memory flat regardless of user count.
+    const BATCH_SIZE = 200;
+    const allUsers: { id: string; preference: { categories: string; locations: string; experienceLevels: string } | null }[] = [];
+    let cursor: string | undefined;
 
-    const filteredUsers = users.filter((u) => {
+    while (true) {
+      const batch = await db.user.findMany({
+        where,
+        select: {
+          id: true,
+          preference: {
+            select: { categories: true, locations: true, experienceLevels: true },
+          },
+        },
+        orderBy: { id: "asc" },
+        take: BATCH_SIZE,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+
+      if (batch.length === 0) break;
+      allUsers.push(...batch);
+      cursor = batch[batch.length - 1].id;
+      if (batch.length < BATCH_SIZE) break;
+    }
+
+    const filteredUsers = allUsers.filter((u) => {
       if (!onboarding || onboarding === "all") return true;
       
       const categories = parseJsonArray(u.preference?.categories);

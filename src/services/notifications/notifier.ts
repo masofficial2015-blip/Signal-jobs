@@ -14,7 +14,7 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { jobMatchingEngine } from "../matching/matcher";
-import { telegramClient } from "../telegram/client";
+import { telegramClient, TelegramApiError } from "../telegram/client";
 import { MSG, KB } from "../telegram/messages";
 import { ParsedUserPreferences } from "@/lib/types";
 
@@ -185,7 +185,9 @@ export class NotificationDispatcher {
     const skippedDuplicates = notificationsToCreate.length - newNotifications.length;
 
     if (newNotifications.length > 0) {
-      await db.notification.createMany({ data: newNotifications });
+      // skipDuplicates is atomic at the DB level — prevents duplicate inserts
+      // on concurrent double-publish without crashing the background promise.
+      await db.notification.createMany({ data: newNotifications, skipDuplicates: true });
     }
     const created = newNotifications.length;
 
@@ -384,6 +386,20 @@ export class NotificationDispatcher {
         try {
           const { user, job } = notification;
 
+          // Skip permanently blocked users — retrying them wastes quota and
+          // risks Telegram flagging the bot for spam.
+          const prevError = (notification.errorMessage || "").toLowerCase();
+          const isPermanentlyBlocked =
+            prevError.includes("forbidden") ||
+            prevError.includes("blocked") ||
+            prevError.includes("deactivated") ||
+            prevError.includes("chat not found");
+
+          if (isPermanentlyBlocked) {
+            totalFailed++;
+            continue;
+          }
+
           const messageText = MSG.jobMatchAlert({
             title: job.title,
             company: job.company,
@@ -462,16 +478,23 @@ export class NotificationDispatcher {
       const result = await telegramClient.sendMessage(options);
       return { ok: true, data: result };
     } catch (err: any) {
-      // Wait 2 seconds and retry once — covers transient failures and mild rate limits
-      await this.delay(2000);
+      // If Telegram returned 429, respect the retry_after window they specify.
+      // Ignoring it and retrying immediately causes further 429s and lost messages.
+      const retryAfterMs =
+        err instanceof TelegramApiError && err.retryAfter
+          ? err.retryAfter * 1000
+          : 2000; // 2s fallback for transient network errors
+
+      await this.delay(retryAfterMs);
+
       try {
         const retry = await telegramClient.sendMessage(options);
         return { ok: true, data: retry };
       } catch (retryErr: any) {
-        return { 
-          ok: false, 
-          data: null, 
-          errorMessage: retryErr.message || err.message || "Failed to send message via Telegram API" 
+        return {
+          ok: false,
+          data: null,
+          errorMessage: retryErr.message || err.message || "Failed to send message via Telegram API",
         };
       }
     }

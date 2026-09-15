@@ -13,4 +13,6 @@ export const db =
         : ["error"],
   });
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+// Cache the instance on globalThis in all environments to prevent
+// connection pool exhaustion on hot reloads or crash restarts.
+globalForPrisma.prisma = db;

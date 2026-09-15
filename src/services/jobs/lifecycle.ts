@@ -25,37 +25,26 @@ export class JobLifecycleService {
     const now = new Date();
     const maxAgeThreshold = new Date(now.getTime() - maxAgeDays * 24 * 60 * 60 * 1000);
 
-    // Find all published jobs
-    const publishedJobs = await db.job.findMany({
+    // Select only IDs — avoids loading full job objects into memory at scale.
+    const jobsToExpire = await db.job.findMany({
       where: {
         status: "PUBLISHED",
+        OR: [
+          // Explicit deadline has passed
+          { deadline: { lt: now } },
+          // Job is too old (by publishedAt)
+          { publishedAt: { lt: maxAgeThreshold } },
+          // No publishedAt set — fall back to createdAt
+          { AND: [{ publishedAt: null }, { createdAt: { lt: maxAgeThreshold } }] },
+        ],
       },
+      select: { id: true },
     });
 
-    const expiredJobIds: string[] = [];
-
-    for (const job of publishedJobs) {
-      let shouldExpire = false;
-
-      // 1. Check explicit deadline
-      if (job.deadline && new Date(job.deadline) < now) {
-        shouldExpire = true;
-      }
-
-      // 2. Check maximum age threshold (e.g. 30 days old)
-      if (job.publishedAt && new Date(job.publishedAt) < maxAgeThreshold) {
-        shouldExpire = true;
-      } else if (!job.publishedAt && new Date(job.createdAt) < maxAgeThreshold) {
-        shouldExpire = true;
-      }
-
-      if (shouldExpire) {
-        expiredJobIds.push(job.id);
-      }
-    }
+    const expiredJobIds = jobsToExpire.map((j) => j.id);
 
     if (expiredJobIds.length > 0) {
-      // Bulk update expired status
+      // Bulk update in a single query — no per-job loop
       await db.job.updateMany({
         where: { id: { in: expiredJobIds } },
         data: {
@@ -75,7 +64,7 @@ export class JobLifecycleService {
     }
 
     return {
-      totalChecked: publishedJobs.length,
+      totalChecked: expiredJobIds.length,
       expiredCount: expiredJobIds.length,
       expiredJobIds,
     };
