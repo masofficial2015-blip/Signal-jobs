@@ -116,7 +116,7 @@ export default function AdminNewJobPage() {
           ? (ext.category as string[])
           : ext.category
           ? [(ext.category as string)]
-          : ["other"],
+          : [],
         experienceLevels: normalizeExp(ext.experienceLevel),
         education: (ext.education as string) || "",
         deadline: normalizeDateStr(ext.deadline),
@@ -453,7 +453,7 @@ export default function AdminNewJobPage() {
                             type="button"
                             onClick={() => {
                               const next = selected ? current.formData.categories.filter((x) => x !== c.id) : [...current.formData.categories, c.id];
-                              updateField("categories", next.length > 0 ? next : ["other"]);
+                              updateField("categories", next);
                             }}
                             className={`text-left px-2.5 py-1.5 rounded-lg border text-[11px] transition-all ${selected ? "border-sky-500/60 bg-sky-500/15 text-sky-300 font-semibold" : "border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-600"}`}
                           >

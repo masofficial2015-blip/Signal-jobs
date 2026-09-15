@@ -12,7 +12,6 @@ export const JOB_CATEGORIES = [
   { id: "ngo_development", label: "NGO & Development" },
   { id: "software_it", label: "Software & IT" },
   { id: "logistics_transport", label: "Transportation & Logistics" },
-  { id: "other", label: "Other" },
 ] as const;
 
 export const CATEGORY_ALIASES: Record<string, string> = {

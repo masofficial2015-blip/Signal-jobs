@@ -38,11 +38,21 @@ export default function AdminJobsPage() {
   const [loading, setLoading] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  // Debounce search query for live searching
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
 
   const fetchJobs = async () => {
     setLoading(true);
@@ -50,7 +60,7 @@ export default function AdminJobsPage() {
     try {
       const url = new URL("/api/admin/jobs", window.location.origin);
       if (categoryFilter !== "ALL") url.searchParams.set("category", categoryFilter);
-      if (searchQuery.trim()) url.searchParams.set("q", searchQuery.trim());
+      if (debouncedSearchQuery.trim()) url.searchParams.set("q", debouncedSearchQuery.trim());
       url.searchParams.set("page", String(page));
       url.searchParams.set("limit", "12");
 
@@ -70,12 +80,12 @@ export default function AdminJobsPage() {
 
   useEffect(() => {
     fetchJobs();
-  }, [categoryFilter, page]);
+  }, [categoryFilter, page, debouncedSearchQuery]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setDebouncedSearchQuery(searchQuery);
     setPage(1);
-    fetchJobs();
   };
 
   const handleDeleteJob = async (jobId: string, title: string) => {
@@ -175,8 +185,22 @@ export default function AdminJobsPage() {
               placeholder="Search title, company, location..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-slate-800 bg-slate-900 py-2 pl-9 pr-3 text-xs text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none"
+              className="w-full rounded-lg border border-slate-800 bg-slate-900 py-2 pl-9 pr-8 text-xs text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setDebouncedSearchQuery("");
+                  setPage(1);
+                }}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white"
+                title="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
           <Button type="submit" variant="secondary" size="sm">
             Search

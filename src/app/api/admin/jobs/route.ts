@@ -24,15 +24,15 @@ export async function GET(req: NextRequest) {
       where.status = status;
     }
     if (category && category !== "ALL") {
-      where.category = { contains: category };
+      where.category = { contains: category, mode: "insensitive" };
     }
     if (query) {
       where.OR = [
-        { title: { contains: query } },
-        { company: { contains: query } },
-        { location: { contains: query } },
-        { category: { contains: query } },
-        { profession: { contains: query } },
+        { title: { contains: query, mode: "insensitive" } },
+        { company: { contains: query, mode: "insensitive" } },
+        { location: { contains: query, mode: "insensitive" } },
+        { category: { contains: query, mode: "insensitive" } },
+        { profession: { contains: query, mode: "insensitive" } },
       ];
     }
 
