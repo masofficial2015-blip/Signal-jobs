@@ -23,6 +23,8 @@ import {
   handleCallbackQuery,
 } from "@/services/telegram/handlers";
 
+import { TelegramApiError } from "@/services/telegram/client";
+
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
@@ -47,6 +49,21 @@ export async function POST(req: NextRequest) {
   // Fire-and-forget: process the update asynchronously so we can return 200 instantly.
   // On Railway/persistent Node.js servers, the detached promise continues running after response.
   processUpdate(update).catch((err) => {
+    // Silently ignore harmless Telegram 400s that occur under normal heavy usage:
+    //  - "message is not modified": user double-tapped a button; bot tried to edit
+    //    with identical content — Telegram rejects as no-op, user sees nothing wrong.
+    //  - "query is too old": user tapped a button but our response took longer than
+    //    Telegram's ~30s callback window; no action needed.
+    if (err instanceof TelegramApiError && err.errorCode === 400) {
+      const msg = (err.message || "").toLowerCase();
+      if (
+        msg.includes("message is not modified") ||
+        msg.includes("query is too old") ||
+        msg.includes("query id is invalid")
+      ) {
+        return; // Expected UX artifact — not a real error
+      }
+    }
     console.error("[Telegram Webhook] Unhandled error in processUpdate:", err);
   });
 
