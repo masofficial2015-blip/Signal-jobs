@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { Users, Send, MapPin, CheckCircle, PauseCircle, Briefcase, Bookmark } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
 import { formatCategoryLabels, normalizeTaxonomyId, getSubcategoriesForCategory } from "@/lib/constants";
 import { UserFilters } from "./user-filters";
@@ -32,6 +34,10 @@ export default async function AdminUsersPage({
   const location = (params.location as string) || "all";
   const experience = (params.experience as string) || "all";
 
+  const page = Math.max(1, parseInt((params.page as string) || "1", 10));
+  const limit = 15;
+  const skip = (page - 1) * limit;
+
   // Build the Prisma Where clause dynamically
   const where: Prisma.UserWhereInput = {};
 
@@ -54,60 +60,87 @@ export default async function AdminUsersPage({
     where.isActive = false;
   }
 
-  // To filter by preference JSON fields, we unfortunately need to do it in-memory or 
-  // via complex queries. Since it's SQLite-compatible stringified arrays, 
-  // we can use string matching for simple contains as a workaround for this MVP.
-  const prefWhere: any = {};
-  let hasPrefWhere = false;
+  const prefConditions: Prisma.UserPreferenceWhereInput[] = [];
 
   if (category !== "all") {
     const norm = normalizeTaxonomyId(category);
     const subs = getSubcategoriesForCategory(norm).map((s) => s.id);
     const matchedTokens = [norm, ...subs];
-    prefWhere.OR = matchedTokens.map((t) => ({
-      categories: { contains: `"${t}"` },
-    }));
-    hasPrefWhere = true;
+    prefConditions.push({
+      OR: matchedTokens.map((t) => ({
+        categories: { contains: `"${t}"` },
+      })),
+    });
   }
+
   if (location !== "all") {
-    prefWhere.locations = { contains: `"${location}"` };
-    hasPrefWhere = true;
+    prefConditions.push({
+      locations: { contains: `"${location}"` },
+    });
   }
+
   if (experience !== "all") {
-    prefWhere.experienceLevels = { contains: `"${experience}"` };
-    hasPrefWhere = true;
+    prefConditions.push({
+      experienceLevels: { contains: `"${experience}"` },
+    });
   }
 
-  if (hasPrefWhere) {
-    where.preference = prefWhere;
-  }
-
-  const users = await db.user.findMany({
-    where,
-    include: {
-      preference: true,
-      _count: {
-        select: { notifications: true, savedJobs: true, interactions: true },
+  if (onboarding === "completed") {
+    prefConditions.push({
+      OR: [
+        { categories: { not: "[]" } },
+        { experienceLevels: { not: "[]" } },
+        { locations: { not: "[]" } },
+      ],
+    });
+  } else if (onboarding === "pending") {
+    where.OR = [
+      { preference: null },
+      {
+        preference: {
+          categories: "[]",
+          experienceLevels: "[]",
+          locations: "[]",
+        },
       },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+    ];
+  }
 
-  // In-memory filter for onboarding status since it depends on parsing JSON arrays
-  const filteredUsers = users.filter((u) => {
-    if (onboarding === "all") return true;
-    
-    const categories = parseJsonArray(u.preference?.categories);
-    const locations = parseJsonArray(u.preference?.locations);
-    const expLevels = parseJsonArray(u.preference?.experienceLevels);
-    
-    const isOnboarded = categories.length > 0 || expLevels.length > 0 || locations.length > 0;
-    
-    if (onboarding === "completed") return isOnboarded;
-    if (onboarding === "pending") return !isOnboarded;
-    
-    return true;
-  });
+  if (prefConditions.length > 0 && onboarding !== "pending") {
+    where.preference = {
+      AND: prefConditions,
+    };
+  }
+
+  const [users, total] = await Promise.all([
+    db.user.findMany({
+      where,
+      include: {
+        preference: true,
+        _count: {
+          select: { notifications: true, savedJobs: true, interactions: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    db.user.count({ where }),
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  function buildPageUrl(targetPage: number) {
+    const p = new URLSearchParams();
+    if (q) p.set("q", q);
+    if (status !== "all") p.set("status", status);
+    if (onboarding !== "all") p.set("onboarding", onboarding);
+    if (category !== "all") p.set("category", category);
+    if (location !== "all") p.set("location", location);
+    if (experience !== "all") p.set("experience", experience);
+    p.set("page", String(targetPage));
+    return `?${p.toString()}`;
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -121,14 +154,14 @@ export default async function AdminUsersPage({
           </p>
         </div>
         <Badge variant="default" className="text-xs">
-          {filteredUsers.length} Users Found
+          {total} Users Found
         </Badge>
       </div>
 
       <UserFilters />
 
       <Card className="border-slate-800 bg-slate-900/70 overflow-hidden">
-        {filteredUsers.length === 0 ? (
+        {users.length === 0 ? (
           <div className="p-12 text-center space-y-3">
             <Users className="h-10 w-10 text-slate-600 mx-auto" />
             <p className="text-slate-400 text-sm font-medium">No users match your filters.</p>
@@ -150,7 +183,7 @@ export default async function AdminUsersPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {filteredUsers.map((u) => {
+                {users.map((u) => {
                   const userCategories = parseJsonArray(u.preference?.categories);
                   const userProfessions = parseJsonArray(u.preference?.professions);
                   const userLocations = parseJsonArray(u.preference?.locations);
@@ -239,6 +272,33 @@ export default async function AdminUsersPage({
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between p-4 border-t border-slate-800 bg-slate-950/40 text-xs">
+            <span className="text-slate-400">
+              Showing page {page} of {totalPages} ({total} total users)
+            </span>
+            <div className="flex gap-2">
+              <Link
+                href={buildPageUrl(Math.max(1, page - 1))}
+                className={`px-3 py-1.5 rounded border border-slate-800 bg-slate-900 text-slate-300 transition-colors ${
+                  page <= 1 ? "opacity-50 pointer-events-none" : "hover:bg-slate-800"
+                }`}
+              >
+                Previous
+              </Link>
+              <Link
+                href={buildPageUrl(Math.min(totalPages, page + 1))}
+                className={`px-3 py-1.5 rounded border border-slate-800 bg-slate-900 text-slate-300 transition-colors ${
+                  page >= totalPages ? "opacity-50 pointer-events-none" : "hover:bg-slate-800"
+                }`}
+              >
+                Next
+              </Link>
+            </div>
           </div>
         )}
       </Card>

@@ -22,6 +22,7 @@ export function UserFilters() {
   const createQueryString = useCallback(
     (name: string, value: string) => {
       const params = new URLSearchParams(searchParams.toString());
+      params.delete("page"); // Reset to page 1 on filter change
       if (value && value !== "all") {
         params.set(name, value);
       } else {
@@ -38,7 +39,14 @@ export function UserFilters() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    router.push(`?${createQueryString("q", q)}`);
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("page");
+    if (q.trim()) {
+      params.set("q", q.trim());
+    } else {
+      params.delete("q");
+    }
+    router.push(`?${params.toString()}`);
   };
 
   return (

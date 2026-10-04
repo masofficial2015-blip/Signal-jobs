@@ -44,6 +44,7 @@ export default function AdminJobsPage() {
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [deletingExpired, setDeletingExpired] = useState(false);
 
   // Debounce search query for live searching
   useEffect(() => {
@@ -100,6 +101,36 @@ export default function AdminJobsPage() {
     }
   };
 
+  const handleBulkDeleteExpired = async () => {
+    if (
+      !confirm(
+        "Are you sure you want to permanently remove all expired job listings? This will delete all jobs with past deadlines or EXPIRED status."
+      )
+    ) {
+      return;
+    }
+    setDeletingExpired(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/jobs/expire", { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete expired jobs");
+
+      if (data.deletedCount === 0) {
+        setActionSuccess("No expired jobs found to remove.");
+      } else {
+        setActionSuccess(
+          `Successfully removed ${data.deletedCount} expired job listing${data.deletedCount === 1 ? "" : "s"}.`
+        );
+      }
+      fetchJobs();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete expired jobs");
+    } finally {
+      setDeletingExpired(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
@@ -113,6 +144,16 @@ export default function AdminJobsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBulkDeleteExpired}
+            disabled={deletingExpired}
+            className="gap-2 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300 hover:border-red-500/50"
+          >
+            <Trash2 className="h-4 w-4" />
+            <span>{deletingExpired ? "Cleaning..." : "Delete Expired Jobs"}</span>
+          </Button>
           <Link href="/admin/jobs/new">
             <Button variant="primary" size="sm" className="gap-2">
               <PlusCircle className="h-4 w-4" />
