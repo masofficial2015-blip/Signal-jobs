@@ -4,6 +4,7 @@ import { Users, Send, MapPin, CheckCircle, PauseCircle, Briefcase, Bookmark } fr
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
+import { formatCategoryLabels, normalizeTaxonomyId, getSubcategoriesForCategory } from "@/lib/constants";
 import { UserFilters } from "./user-filters";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +61,12 @@ export default async function AdminUsersPage({
   let hasPrefWhere = false;
 
   if (category !== "all") {
-    prefWhere.categories = { contains: `"${category}"` };
+    const norm = normalizeTaxonomyId(category);
+    const subs = getSubcategoriesForCategory(norm).map((s) => s.id);
+    const matchedTokens = [norm, ...subs];
+    prefWhere.OR = matchedTokens.map((t) => ({
+      categories: { contains: `"${t}"` },
+    }));
     hasPrefWhere = true;
   }
   if (location !== "all") {
@@ -190,7 +196,7 @@ export default async function AdminUsersPage({
                           {userCategories.length > 0 ? (
                             userCategories.map((c) => (
                               <Badge key={c} variant="secondary" className="text-[10px]">
-                                {c}
+                                {formatCategoryLabels(c)}
                               </Badge>
                             ))
                           ) : (

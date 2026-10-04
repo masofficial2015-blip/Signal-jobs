@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/auth";
 import { Prisma } from "@prisma/client";
 import { telegramClient } from "@/services/telegram/client";
+import { normalizeTaxonomyId, getSubcategoriesForCategory } from "@/lib/constants";
 
 function parseJsonArray(jsonStr?: string | null): string[] {
   if (!jsonStr) return [];
@@ -68,7 +69,12 @@ export async function POST(req: NextRequest) {
     let hasPrefWhere = false;
 
     if (category && category !== "all") {
-      prefWhere.categories = { contains: `"${category}"` };
+      const norm = normalizeTaxonomyId(category);
+      const subs = getSubcategoriesForCategory(norm).map((s) => s.id);
+      const matchedTokens = [norm, ...subs];
+      prefWhere.OR = matchedTokens.map((t) => ({
+        categories: { contains: `"${t}"` },
+      }));
       hasPrefWhere = true;
     }
     if (location && location !== "all") {

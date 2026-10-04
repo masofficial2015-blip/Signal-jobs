@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS, normalizeCategoryId } from "@/lib/constants";
+import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS, normalizeCategoryId, formatTaxonomyItemLabel } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +93,7 @@ export default async function AnalyticsPage() {
   const topCategories = Object.entries(categoryCounts)
     .sort((a, b) => b[1] - a[1])
     .map(([id, count]) => ({
-      label: JOB_CATEGORIES.find(c => c.id === id)?.label || id,
+      label: formatTaxonomyItemLabel(id, true),
       count
     }));
 

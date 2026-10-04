@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS } from "@/lib/constants";
+import { TAXONOMY, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS } from "@/lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export function UserFilters() {
@@ -92,9 +92,16 @@ export function UserFilters() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
-            {JOB_CATEGORIES.map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
-            ))}
+            {TAXONOMY.flatMap((cat) => [
+              <SelectItem key={cat.id} value={cat.id}>
+                {cat.label}
+              </SelectItem>,
+              ...(cat.subcategories || []).map((sub) => (
+                <SelectItem key={sub.id} value={sub.id} className="pl-6 text-[11px] text-slate-300">
+                  ↳ {sub.label}
+                </SelectItem>
+              )),
+            ])}
           </SelectContent>
         </Select>
 

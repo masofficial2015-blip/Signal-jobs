@@ -9,7 +9,16 @@
  */
 
 import { ParsedUserPreferences } from "@/lib/types";
-import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS } from "@/lib/constants";
+import {
+  JOB_CATEGORIES,
+  EXPERIENCE_LEVELS,
+  ETHIOPIAN_LOCATIONS,
+  normalizeTaxonomyId,
+  getParentCategory,
+  getSubcategoriesForCategory,
+  isSubcategory,
+  TAXONOMY,
+} from "@/lib/constants";
 
 export interface MatchableJob {
   id: string;
@@ -74,7 +83,7 @@ export class JobMatchingEngine {
     const reasons: string[] = [];
 
     // ── 1. Category Matching ─────────────────────────────────────────────────
-    const userCats = (preferences.categories || []).map((c) => norm(c));
+    const userCats = (preferences.categories || []).filter(Boolean);
     const jobCats = parseTokens(job.category);
     let categoryMatch = false;
 
@@ -82,17 +91,57 @@ export class JobMatchingEngine {
       // User hasn't filtered by category: match all
       categoryMatch = true;
     } else {
-      categoryMatch = userCats.some((userCat) => {
-        return jobCats.some((jobCat) => {
-          if (jobCat === userCat) return true;
-          if (jobCat.includes(userCat) || userCat.includes(jobCat)) return true;
-          // Check against known category labels
-          const catObj = JOB_CATEGORIES.find((c) => c.id === userCat);
-          if (catObj && (norm(catObj.label).includes(jobCat) || jobCat.includes(norm(catObj.label)))) {
-            return true;
-          }
-          return false;
-        });
+      const normalizedJobCats = jobCats.map((jc) => ({
+        raw: jc,
+        norm: normalizeTaxonomyId(jc),
+        parent: getParentCategory(jc),
+      }));
+
+      categoryMatch = userCats.some((rawUserCat) => {
+        const userNorm = normalizeTaxonomyId(rawUserCat);
+        const userParent = getParentCategory(userNorm);
+        const isUserSubcategory = !!userParent;
+
+        if (isUserSubcategory) {
+          // User chose a specific subcategory (e.g., civil_engineering)
+          return normalizedJobCats.some((jc) => {
+            // 1. Exact subcategory ID match
+            if (jc.norm === userNorm) return true;
+
+            // 2. Direct string/token match
+            if (jc.raw === userNorm || jc.raw.includes(userNorm) || userNorm.includes(jc.raw)) return true;
+
+            // 3. Match unspecialized general category posting (e.g. job is tagged ONLY as "engineering" without a conflicting subcategory)
+            if (jc.norm === userParent.id) {
+              const hasConflictingSubcategory = normalizedJobCats.some(
+                (other) => other.parent?.id === userParent.id && other.norm !== userNorm
+              );
+              if (!hasConflictingSubcategory) return true;
+            }
+
+            return false;
+          });
+        } else {
+          // User chose a top-level category (e.g., healthcare or engineering - matches all subcategories)
+          const validSubIds = new Set(getSubcategoriesForCategory(userNorm).map((s) => s.id));
+          return normalizedJobCats.some((jc) => {
+            // 1. Direct top-level match
+            if (jc.norm === userNorm) return true;
+
+            // 2. Subcategory match (job is tagged with a subcategory of user's chosen category)
+            if (validSubIds.has(jc.norm)) return true;
+            if (jc.parent?.id === userNorm) return true;
+
+            // 3. String contains / label match fallback
+            if (jc.raw.includes(userNorm) || userNorm.includes(jc.raw)) return true;
+            const catObj = TAXONOMY.find((c) => c.id === userNorm);
+            if (catObj && (norm(catObj.label).includes(jc.raw) || jc.raw.includes(norm(catObj.label)))) {
+              return true;
+            }
+
+            return false;
+          });
+        }
       });
     }
 

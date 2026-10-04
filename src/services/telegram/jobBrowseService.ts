@@ -13,6 +13,7 @@
  */
 
 import { db } from "@/lib/db";
+import { normalizeTaxonomyId, getParentCategory, getSubcategoriesForCategory } from "@/lib/constants";
 
 export interface JobBrowseItem {
   id: string;
@@ -123,9 +124,21 @@ export class JobBrowseService {
     if (preferences.categories.length > 0) {
       const catQueries: string[] = [];
       preferences.categories.forEach((c) => {
-        catQueries.push(c);
-        if (c === "software_it" || c === "technology") {
-          catQueries.push("software_it", "technology", "software", "tech");
+        const norm = normalizeTaxonomyId(c);
+        catQueries.push(c, norm);
+
+        const parent = getParentCategory(norm);
+        if (parent) {
+          // It's a subcategory -> also check parent category
+          catQueries.push(parent.id);
+        } else {
+          // It's a top-level category -> also check all its subcategories
+          const subs = getSubcategoriesForCategory(norm);
+          subs.forEach((s) => catQueries.push(s.id));
+        }
+
+        if (norm === "software_it") {
+          catQueries.push("technology", "software", "tech");
         }
       });
       andConditions.push({

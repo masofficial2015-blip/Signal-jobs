@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
-import { JOB_CATEGORIES } from "@/lib/constants";
+import { TAXONOMY, formatCategoryLabels } from "@/lib/constants";
 
 interface JobItem {
   id: string;
@@ -169,11 +169,26 @@ export default function AdminJobsPage() {
             className="w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-white focus:border-sky-500 focus:outline-none"
           >
             <option value="ALL">All Job Categories</option>
-            {JOB_CATEGORIES.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
+            {TAXONOMY.map((cat) => {
+              const hasSubs = (cat.subcategories || []).length > 0;
+              if (!hasSubs) {
+                return (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.label}
+                  </option>
+                );
+              }
+              return (
+                <optgroup key={cat.id} label={cat.label}>
+                  <option value={cat.id}>All {cat.label}</option>
+                  {cat.subcategories!.map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      ↳ {sub.label}
+                    </option>
+                  ))}
+                </optgroup>
+              );
+            })}
           </select>
         </div>
 
@@ -255,7 +270,7 @@ export default function AdminJobsPage() {
                     </td>
                     <td className="py-3.5 px-4 space-y-1">
                       <div>
-                        <Badge variant="secondary">{job.category || "General"}</Badge>
+                        <Badge variant="secondary">{formatCategoryLabels(job.category) || "General"}</Badge>
                       </div>
                       {job.experienceLevel && (
                         <div className="text-[11px] text-slate-400">{job.experienceLevel}</div>

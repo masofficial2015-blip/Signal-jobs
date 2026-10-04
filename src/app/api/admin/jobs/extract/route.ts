@@ -10,19 +10,24 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { rawText, sourceName, sourceUrl } = body;
+    const { rawText, sourceName, sourceUrl, base64Image, mimeType } = body;
 
-    if (!rawText || typeof rawText !== "string" || rawText.trim().length < 10) {
+    const hasValidText = rawText && typeof rawText === "string" && rawText.trim().length >= 10;
+    const hasValidImage = base64Image && typeof base64Image === "string" && mimeType && typeof mimeType === "string";
+
+    if (!hasValidText && !hasValidImage) {
       return NextResponse.json(
-        { error: "Raw job text is required and must be at least 10 characters." },
+        { error: "Please provide either raw job text (at least 10 chars) or a valid image." },
         { status: 400 }
       );
     }
 
     const extractedJobs = await aiJobExtractor.extractJobDetails(
-      rawText,
+      rawText || "",
       sourceName || null,
-      sourceUrl || null
+      sourceUrl || null,
+      base64Image || undefined,
+      mimeType || undefined
     );
 
     return NextResponse.json({ success: true, extractedJobs, count: extractedJobs.length });

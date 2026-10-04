@@ -12,11 +12,13 @@ import {
   ChevronRight,
   CircleDot,
   X,
+  Image as ImageIcon,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { JOB_CATEGORIES, EXPERIENCE_LEVELS } from "@/lib/constants";
+import { TAXONOMY, EXPERIENCE_LEVELS, normalizeTaxonomyId, getParentCategory } from "@/lib/constants";
 
 interface JobFormData {
   title: string;
@@ -46,6 +48,9 @@ export default function AdminNewJobPage() {
   const [rawText, setRawText] = useState("");
   const [sourceName, setSourceName] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  const [imageBase64, setImageBase64] = useState("");
+  const [imageMimeType, setImageMimeType] = useState("");
+  const [imagePreviewUrl, setImagePreviewUrl] = useState("");
 
   const [extracting, setExtracting] = useState(false);
   const [positions, setPositions] = useState<ExtractedPosition[]>([]);
@@ -59,10 +64,15 @@ export default function AdminNewJobPage() {
   const current = positions[currentIdx];
 
   const handleProcessAI = async () => {
-    if (!rawText.trim() || rawText.trim().length < 10) {
-      setError("Please paste raw job listing text (at least 10 characters).");
+    if (!rawText.trim() && !imageBase64) {
+      setError("Please paste raw job listing text or upload an image.");
       return;
     }
+    if (rawText.trim() && rawText.trim().length < 10 && !imageBase64) {
+      setError("Text must be at least 10 characters if no image is provided.");
+      return;
+    }
+    
     setExtracting(true);
     setError(null);
 
@@ -70,7 +80,13 @@ export default function AdminNewJobPage() {
       const res = await fetch("/api/admin/jobs/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawText, sourceName, sourceUrl }),
+        body: JSON.stringify({ 
+          rawText, 
+          sourceName, 
+          sourceUrl,
+          base64Image: imageBase64,
+          mimeType: imageMimeType
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "AI processing failed.");
@@ -112,11 +128,25 @@ export default function AdminNewJobPage() {
         title: (ext.title as string) || "",
         company: (ext.company as string) || "",
         location: (ext.location as string) || "Addis Ababa",
-        categories: Array.isArray(ext.category)
-          ? (ext.category as string[])
-          : ext.category
-          ? [(ext.category as string)]
-          : [],
+        categories: (() => {
+          const raw = ext.category;
+          if (!raw) return [];
+          const list = Array.isArray(raw) ? raw : [raw];
+          const result: string[] = [];
+          list.forEach((item) => {
+            if (typeof item === "string" && item.trim()) {
+              const norm = normalizeTaxonomyId(item);
+              if (norm && norm !== "other") {
+                result.push(norm);
+                const parent = getParentCategory(norm);
+                if (parent && !result.includes(parent.id)) {
+                  result.push(parent.id);
+                }
+              }
+            }
+          });
+          return Array.from(new Set(result));
+        })(),
         experienceLevels: normalizeExp(ext.experienceLevel),
         education: (ext.education as string) || "",
         deadline: normalizeDateStr(ext.deadline),
@@ -270,13 +300,79 @@ export default function AdminNewJobPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <textarea
-            rows={7}
-            value={rawText}
-            onChange={(e) => setRawText(e.target.value)}
-            placeholder="Paste complete vacancy text here..."
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 p-3 font-mono text-xs text-white placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
-          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col space-y-2">
+              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                Upload Image <span className="text-slate-500 font-normal normal-case">(optional)</span>
+              </label>
+              
+              {!imagePreviewUrl ? (
+                <div className="relative border-2 border-dashed border-slate-700 hover:border-sky-500/50 rounded-lg bg-slate-950/50 p-6 flex flex-col items-center justify-center transition-colors">
+                  <input 
+                    type="file" 
+                    accept="image/png, image/jpeg, image/webp"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 4 * 1024 * 1024) {
+                        setError("Image must be smaller than 4MB");
+                        return;
+                      }
+                      
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        const result = reader.result as string;
+                        setImagePreviewUrl(result);
+                        
+                        // Extract base64 part and mime type
+                        const matches = result.match(/^data:(image\/[a-zA-Z0-9]+);base64,(.+)$/);
+                        if (matches && matches.length === 3) {
+                          setImageMimeType(matches[1]);
+                          setImageBase64(matches[2]);
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                  <ImageIcon className="h-8 w-8 text-slate-500 mb-2" />
+                  <p className="text-sm font-medium text-slate-300">Click or drag to upload</p>
+                  <p className="text-xs text-slate-500">PNG, JPG, WEBP up to 4MB</p>
+                </div>
+              ) : (
+                <div className="relative rounded-lg border border-slate-700 bg-slate-950 overflow-hidden h-40 group">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={imagePreviewUrl} alt="Upload preview" className="w-full h-full object-contain" />
+                  <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Button 
+                      variant="danger" 
+                      size="sm"
+                      onClick={() => {
+                        setImagePreviewUrl("");
+                        setImageBase64("");
+                        setImageMimeType("");
+                      }}
+                    >
+                      <X className="h-4 w-4 mr-2" /> Remove Image
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex flex-col space-y-2">
+              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                Raw Text <span className="text-slate-500 font-normal normal-case">(optional if image is provided)</span>
+              </label>
+              <textarea
+                rows={5}
+                value={rawText}
+                onChange={(e) => setRawText(e.target.value)}
+                placeholder="Paste complete vacancy text here..."
+                className="w-full h-full min-h-[160px] rounded-lg border border-slate-700 bg-slate-950 p-3 font-mono text-xs text-white placeholder:text-slate-600 focus:border-sky-500 focus:outline-none"
+              />
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -442,23 +538,66 @@ export default function AdminNewJobPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                      Categories <span className="text-slate-500 font-normal normal-case">(select all that apply)</span>
+                      Categories & Subcategories <span className="text-slate-500 font-normal normal-case">(select all that apply)</span>
                     </label>
-                    <div className="grid grid-cols-2 gap-1.5 max-h-52 overflow-y-auto pr-1">
-                      {JOB_CATEGORIES.map((c) => {
-                        const selected = current.formData.categories.includes(c.id);
+                    <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1 rounded-lg border border-slate-700 bg-slate-950 p-2">
+                      {TAXONOMY.map((cat) => {
+                        const isCatSelected = current.formData.categories.includes(cat.id);
+                        const hasSubs = (cat.subcategories || []).length > 0;
                         return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => {
-                              const next = selected ? current.formData.categories.filter((x) => x !== c.id) : [...current.formData.categories, c.id];
-                              updateField("categories", next);
-                            }}
-                            className={`text-left px-2.5 py-1.5 rounded-lg border text-[11px] transition-all ${selected ? "border-sky-500/60 bg-sky-500/15 text-sky-300 font-semibold" : "border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-600"}`}
-                          >
-                            {selected ? "✓ " : ""}{c.label}
-                          </button>
+                          <div key={cat.id} className="space-y-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = isCatSelected
+                                  ? current.formData.categories.filter((x) => x !== cat.id)
+                                  : [...current.formData.categories, cat.id];
+                                updateField("categories", next);
+                              }}
+                              className={`w-full text-left px-2.5 py-1.5 rounded-md border text-[11px] font-medium transition-all flex items-center justify-between ${
+                                isCatSelected
+                                  ? "border-sky-500/60 bg-sky-500/15 text-sky-300 font-semibold"
+                                  : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                              }`}
+                            >
+                              <span>{isCatSelected ? "✓ " : ""}{cat.label}</span>
+                              {hasSubs && (
+                                <span className="text-[10px] text-slate-500 font-normal">
+                                  {cat.subcategories!.length} specialties
+                                </span>
+                              )}
+                            </button>
+
+                            {hasSubs && (
+                              <div className="grid grid-cols-2 gap-1 pl-2 pt-0.5 pb-1">
+                                {cat.subcategories!.map((sub) => {
+                                  const isSubSelected = current.formData.categories.includes(sub.id);
+                                  return (
+                                    <button
+                                      key={sub.id}
+                                      type="button"
+                                      onClick={() => {
+                                        let next = isSubSelected
+                                          ? current.formData.categories.filter((x) => x !== sub.id)
+                                          : [...current.formData.categories, sub.id];
+                                        if (!isSubSelected && !next.includes(cat.id)) {
+                                          next.push(cat.id);
+                                        }
+                                        updateField("categories", next);
+                                      }}
+                                      className={`text-left px-2 py-1 rounded border text-[10px] transition-all ${
+                                        isSubSelected
+                                          ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300 font-semibold"
+                                          : "border-slate-800/80 bg-slate-900/30 text-slate-400 hover:border-slate-700"
+                                      }`}
+                                    >
+                                      {isSubSelected ? "✓ " : "↳ "}{sub.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
                     </div>

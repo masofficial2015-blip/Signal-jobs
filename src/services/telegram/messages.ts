@@ -3,7 +3,17 @@
  * Pure functions, no I/O. Easy to test independently.
  */
 
-import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS, normalizeCategoryId } from "@/lib/constants";
+import {
+  JOB_CATEGORIES,
+  EXPERIENCE_LEVELS,
+  ETHIOPIAN_LOCATIONS,
+  TAXONOMY,
+  normalizeTaxonomyId,
+  formatCategoryLabels,
+  getSubcategoriesForCategory,
+} from "@/lib/constants";
+
+export { formatCategoryLabels };
 
 export type InlineKeyboard = Array<Array<{ text: string; callback_data?: string; url?: string }>>;
 
@@ -12,44 +22,6 @@ export type InlineKeyboard = Array<Array<{ text: string; callback_data?: string;
 function esc(text: string | null | undefined): string {
   if (!text) return "";
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-export function formatCategoryLabels(raw: string | string[] | null | undefined): string {
-  if (!raw) return "";
-  let items: string[] = [];
-
-  if (Array.isArray(raw)) {
-    items = raw;
-  } else if (typeof raw === "string") {
-    const trimmed = raw.trim();
-    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) {
-          items = parsed;
-        } else {
-          items = [trimmed];
-        }
-      } catch {
-        items = [trimmed];
-      }
-    } else if (trimmed.includes(",")) {
-      items = trimmed.split(",").map((s) => s.trim()).filter(Boolean);
-    } else {
-      items = [trimmed];
-    }
-  }
-
-  const categoryMap = new Map<string, string>(JOB_CATEGORIES.map((c) => [c.id, c.label]));
-  const labels = items
-    .map((item) => {
-      const clean = item.replace(/^["']|["']$/g, "").trim();
-      const normalized = normalizeCategoryId(clean);
-      return categoryMap.get(normalized) || categoryMap.get(clean) || clean;
-    })
-    .filter(Boolean);
-
-  return labels.join(", ");
 }
 
 export function formatExperienceLabel(raw: string | string[] | null | undefined): string {
@@ -125,6 +97,30 @@ export const KB = {
       rows.push(row);
     }
     rows.push([{ text: "🔙 Back to Preferences", callback_data: "cmd:preferences" }]);
+    return rows;
+  },
+
+  subcategories(categoryId: string): InlineKeyboard {
+    const norm = normalizeTaxonomyId(categoryId);
+    const cat = TAXONOMY.find((c) => c.id === norm);
+    const catLabel = cat ? cat.label : "All Opportunities";
+    const subs = cat?.subcategories || [];
+
+    const rows: InlineKeyboard = [];
+
+    // All Category Button
+    rows.push([{ text: `🌟 All ${catLabel}`, callback_data: `pref:select_cat:${norm}` }]);
+
+    // Subcategory Buttons
+    for (let i = 0; i < subs.length; i += 2) {
+      const row = [{ text: subs[i].label, callback_data: `pref:select_sub:${subs[i].id}` }];
+      if (subs[i + 1]) {
+        row.push({ text: subs[i + 1].label, callback_data: `pref:select_sub:${subs[i + 1].id}` });
+      }
+      rows.push(row);
+    }
+
+    rows.push([{ text: "🔙 Back to Categories", callback_data: "cmd:choose_cat" }]);
     return rows;
   },
 
@@ -307,6 +303,17 @@ export const MSG = {
     return "🗂 <b>Step 1 of 3 — Job Category</b>\n\nChoose the field you're looking for:";
   },
 
+  askSubcategory(categoryId: string): string {
+    const norm = normalizeTaxonomyId(categoryId);
+    const cat = TAXONOMY.find((c) => c.id === norm);
+    const catLabel = cat ? cat.label : "Category";
+    return (
+      `🗂 <b>${esc(catLabel)}</b>\n\n` +
+      `Choose a specific specialty, or select <b>All ${esc(catLabel)}</b> to receive every opportunity in this sector:\n\n` +
+      `💡 <i>Tip: If you're not sure which specialty fits best, select 'All ${esc(catLabel)}' so you don't miss any relevant opportunities.</i>`
+    );
+  },
+
   askExperienceLevel(): string {
     return "🎯 <b>Step 2 of 3 — Experience Level</b>\n\nWhat experience level are you targeting?";
   },
@@ -474,6 +481,17 @@ export const MSG = {
 
   editCategory(): string {
     return "🗂 <b>Change Category</b>\n\nChoose your new preferred job category:";
+  },
+
+  editSubcategory(categoryId: string): string {
+    const norm = normalizeTaxonomyId(categoryId);
+    const cat = TAXONOMY.find((c) => c.id === norm);
+    const catLabel = cat ? cat.label : "Category";
+    return (
+      `🗂 <b>Change Specialty — ${esc(catLabel)}</b>\n\n` +
+      `Select your specialty or choose <b>All ${esc(catLabel)}</b>:\n\n` +
+      `💡 <i>Tip: If you're not sure which specialty fits best, select 'All ${esc(catLabel)}' so you don't miss any relevant opportunities.</i>`
+    );
   },
 
   editExperience(): string {

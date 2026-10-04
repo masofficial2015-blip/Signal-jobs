@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS } from "@/lib/constants";
+import { TAXONOMY, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS } from "@/lib/constants";
 
 
 export default function BroadcastPage() {
@@ -148,9 +148,16 @@ export default function BroadcastPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
-                    {JOB_CATEGORIES.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
-                    ))}
+                    {TAXONOMY.flatMap((cat) => [
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.label}
+                      </SelectItem>,
+                      ...(cat.subcategories || []).map((sub) => (
+                        <SelectItem key={sub.id} value={sub.id} className="pl-6 text-[11px] text-slate-300">
+                          ↳ {sub.label}
+                        </SelectItem>
+                      )),
+                    ])}
                   </SelectContent>
                 </Select>
               </div>

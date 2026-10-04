@@ -34,25 +34,18 @@ export class GeminiJobExtractor implements AIJobExtractor {
   async extractJobDetails(
     rawText: string,
     sourceName?: string | null,
-    sourceUrl?: string | null
+    sourceUrl?: string | null,
+    base64Image?: string,
+    mimeType?: string
   ): Promise<DetailedExtractedJobData[]> {
     if (!this.apiKey || this.apiKey === "mock_gemini_api_key") {
       return [this.mockExtraction(rawText, sourceName, sourceUrl)];
     }
 
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
+      const parts: any[] = [
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  {
-                    text: `CRITICAL INSTRUCTION: You are a high-precision job parsing assistant for Ethiopian job listings.
+          text: `CRITICAL INSTRUCTION: You are a high-precision job parsing assistant for Ethiopian job listings.
 
 IMPORTANT: A single post may contain MULTIPLE job positions (e.g. "Position 1: ...", "Position 2: ..."). 
 You MUST extract EACH position as a SEPARATE job object and return ALL of them as a JSON array.
@@ -65,7 +58,11 @@ For each position, extract:
 - company: Organization/employer name (shared across positions if same company) or null
 - summary: Short 2-3 sentence summary of the opportunity or null
 - description: Overview/about the role or null
-- category: Array of applicable categories from ["agriculture", "architecture", "business_admin", "education", "engineering", "finance_accounting", "healthcare", "hospitality", "marketing_sales", "media_communications", "ngo_development", "software_it", "logistics_transport"] (e.g. ["software_it", "engineering"])
+- category: Array of applicable categories/subcategories from:
+  Categories: ["agriculture", "architecture", "business_admin", "education", "engineering", "finance_accounting", "healthcare", "hospitality", "marketing_sales", "media_communications", "ngo_development", "software_it", "logistics_transport"]
+  Healthcare Subcategories: ["clinical_doctors", "pharmacy_lab", "nursing_midwifery", "public_health_admin"]
+  Engineering Subcategories: ["mechanical_engineering", "civil_engineering", "electrical_engineering", "chemical_engineering"]
+  (e.g. ["healthcare", "nursing_midwifery"] or ["engineering", "civil_engineering"] or ["software_it"])
 - profession: Standardized job role (e.g. "Software Engineer", "Civil Engineer", "Accountant") or null
 - experienceLevel: Array of matching experience levels from ["graduate", "entry_level", "mid_level", "senior_level"]. Note: If the position accepts 0 years / fresh grads or 0-2 years, include both "graduate" and "entry_level" in the array.
 - education: Degree/Diploma/Education requirement (e.g. "BSc in Computer Science or related", "BA in Accounting", "Diploma / Degree in Management") or null
@@ -76,9 +73,29 @@ For each position, extract:
 Return ONLY a raw valid JSON array (e.g. [{...}, {...}]) without any markdown or code block formatting.
 
 JOB TEXT:
-${rawText}`,
-                  },
-                ],
+${rawText || "See attached image."}`,
+        },
+      ];
+
+      if (base64Image && mimeType) {
+        parts.push({
+          inlineData: {
+            data: base64Image,
+            mimeType: mimeType,
+          },
+        });
+      }
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts,
               },
             ],
             generationConfig: {

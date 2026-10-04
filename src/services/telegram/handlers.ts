@@ -9,7 +9,7 @@ import { telegramClient } from "./client";
 import { userService, TelegramFromUser } from "./userService";
 import { jobBrowseService, invalidateBrowseCache } from "./jobBrowseService";
 import { KB, MSG, formatCategoryLabels, formatExperienceLabel, formatLocationLabel } from "./messages";
-import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS } from "@/lib/constants";
+import { JOB_CATEGORIES, EXPERIENCE_LEVELS, ETHIOPIAN_LOCATIONS, getSubcategoriesForCategory } from "@/lib/constants";
 
 type ChatId = string | number;
 
@@ -388,7 +388,7 @@ export async function handleCallbackQuery(
   }
 
   // ── Preference editing screens ──
-  if (data === "edit:cat") {
+  if (data === "edit:cat" || data === "cmd:choose_cat") {
     await telegramClient.answerCallbackQuery({ callbackQueryId });
     if (messageId) {
       await telegramClient.editMessageText({
@@ -606,6 +606,41 @@ async function handlePreferenceCallback(
   }
 
   if (axis === "cat") {
+    const subs = getSubcategoriesForCategory(value);
+    if (subs.length > 0) {
+      // Category has subcategories -> prompt user to select a subcategory or "All"
+      const stepText = MSG.askSubcategory(value);
+      const replyMarkup = { inline_keyboard: KB.subcategories(value) };
+      if (messageId) {
+        await telegramClient.editMessageText({ chatId, messageId, text: stepText, replyMarkup });
+      } else {
+        await telegramClient.sendMessage({ chatId, text: stepText, replyMarkup });
+      }
+      return;
+    }
+
+    // Category has no subcategories -> save directly and proceed
+    await userService.upsertPreference(user.id, { categories: [value] });
+    const freshUser = await userService.getByTelegramId(String(from.id));
+    const hasExp = !!userService.parseArray(freshUser?.preference?.experienceLevels).length;
+
+    if (!hasExp) {
+      // Continuing onboarding: transition to step 2
+      const stepText = `🗂 Category set to <b>${formatCategoryLabels(value)}</b>\n\n${MSG.askExperienceLevel()}`;
+      const replyMarkup = { inline_keyboard: KB.experienceLevels() };
+      if (messageId) {
+        await telegramClient.editMessageText({ chatId, messageId, text: stepText, replyMarkup });
+      } else {
+        await telegramClient.sendMessage({ chatId, text: stepText, replyMarkup });
+      }
+    } else {
+      // Return to full preferences menu in place
+      await handlePreferences(chatId, from, messageId);
+    }
+    return;
+  }
+
+  if (axis === "select_cat" || axis === "select_sub") {
     await userService.upsertPreference(user.id, { categories: [value] });
     const freshUser = await userService.getByTelegramId(String(from.id));
     const hasExp = !!userService.parseArray(freshUser?.preference?.experienceLevels).length;
