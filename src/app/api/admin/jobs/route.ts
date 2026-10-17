@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     }
 
     const isPublishing = status === "PUBLISHED" || !status;
-    const jobStatus = "PUBLISHED";
+    const jobStatus = isPublishing ? "PUBLISHED" : "DRAFT";
 
     const job = await db.job.create({
       data: {

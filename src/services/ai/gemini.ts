@@ -14,6 +14,8 @@ export interface DetailedExtractedJobData {
   location: string | null;
   deadline: string | null;
   applicationUrl: string | null;
+  employmentType?: string | null;
+  skills?: string[] | null;
   sourceName?: string | null;
   sourceUrl?: string | null;
 }

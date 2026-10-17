@@ -14,7 +14,8 @@ import {
   ShieldCheck,
   Send,
   PieChart,
-  Megaphone
+  Megaphone,
+  Inbox
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -39,8 +40,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const navItems = [
     { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
+    { label: "Scraper Inbox", href: "/admin/inbox", icon: Inbox, highlight: true },
     { label: "Analytics", href: "/admin/analytics", icon: PieChart },
-    { label: "Ingest New Job", href: "/admin/jobs/new", icon: PlusCircle, highlight: true },
+    { label: "Manual Ingestion", href: "/admin/jobs/new", icon: PlusCircle },
     { label: "Jobs Manager", href: "/admin/jobs", icon: Briefcase },
     { label: "Telegram Users", href: "/admin/users", icon: Users },
     { label: "Broadcast", href: "/admin/broadcast", icon: Megaphone },
